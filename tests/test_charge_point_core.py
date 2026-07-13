@@ -3,7 +3,7 @@
 import asyncio
 import math
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from websockets.protocol import State
@@ -18,6 +18,7 @@ from custom_components.ocpp.chargepoint import (
     MeasurandValue,
 )
 from custom_components.ocpp.const import (
+    DEFAULT_ENABLE_REBOOT_NOTIFICATIONS,
     DOMAIN,
     CentralSystemSettings,
     ChargerSystemSettings,
@@ -45,6 +46,7 @@ def _mk_entry_data():
         "host": "127.0.0.1",
         "port": 0,
         "csid": "cs",
+        "enable_reboot_notifications": DEFAULT_ENABLE_REBOOT_NOTIFICATIONS,
         "cpids": [{"CP_A": {"cpid": "test_cpid"}}],
         "subprotocols": ["ocpp1.6"],
         "websocket_close_timeout": 5,
@@ -206,6 +208,34 @@ def test_get_ha_metric_prefers_exact_entity(hass):
     assert cp.get_ha_metric("Voltage", connector_id=1) == "229.5"
     # With connector_id=None -> root entity
     assert cp.get_ha_metric("Voltage", connector_id=None) == "n/a"
+
+
+@pytest.mark.parametrize(
+    ("enable_notifications", "expected_notify_calls"),
+    [(True, 1), (False, 0)],
+)
+def test_register_boot_notification_respects_disable_flag(
+    hass, enable_notifications, expected_notify_calls
+):
+    """Test reboot notifications can be disabled without skipping post_connect."""
+    cp = _mk_cp(hass)
+    cp.cs_settings.enable_reboot_notifications = enable_notifications
+    cp.notify_ha = AsyncMock(return_value=True)
+    cp.post_connect = AsyncMock(return_value=None)
+
+    scheduled = []
+
+    def fake_async_create_task(coro):
+        scheduled.append(coro)
+        coro.close()
+        return None
+
+    with patch.object(hass, "async_create_task", side_effect=fake_async_create_task):
+        cp._register_boot_notification()
+
+    assert cp.notify_ha.call_count == expected_notify_calls
+    assert cp.post_connect.call_count == 1
+    assert len(scheduled) == expected_notify_calls + 1
 
 
 def _mv(measurand, value, phase=None, unit=None, context=None, location=None):

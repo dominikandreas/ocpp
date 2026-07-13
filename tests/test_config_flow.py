@@ -8,6 +8,7 @@ from homeassistant.data_entry_flow import InvalidData
 import pytest
 
 from custom_components.ocpp.const import (
+    CONF_ENABLE_REBOOT_NOTIFICATIONS,
     CONF_NUM_CONNECTORS,
     DEFAULT_NUM_CONNECTORS,
     DOMAIN,
@@ -69,6 +70,24 @@ async def test_successful_config_flow(hass, bypass_get_data):
     assert result["title"] == "test_csid_flow"
     assert result["data"] == MOCK_CONFIG_CS
     assert result["result"]
+
+
+async def test_config_flow_stores_reboot_notification_preference(hass, bypass_get_data):
+    """Test the central config flag is stored in the created entry."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    config = MOCK_CONFIG_CS.copy()
+    config.pop(CONF_CPIDS)
+    config[CONF_ENABLE_REBOOT_NOTIFICATIONS] = False
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input=config
+    )
+
+    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_ENABLE_REBOOT_NOTIFICATIONS] is False
 
 
 async def test_successful_discovery_flow(hass, bypass_get_data):

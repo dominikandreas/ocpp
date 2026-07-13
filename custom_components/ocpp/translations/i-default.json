@@ -11,6 +11,7 @@
                     "ssl_certfile_path": "Path to SSL certificate or (None)",
                     "ssl_keyfile_path": "Path to SSL key or (None)",
                     "csid": "Central system identity",
+                    "enable_reboot_notifications": "Enable charger reboot notifications",
                     "websocket_close_timeout": "Websocket close timeout (seconds)",
                     "websocket_ping_tries": "Websocket successive times to try connection before closing",
                     "websocket_ping_interval": "Websocket ping interval (seconds)",
