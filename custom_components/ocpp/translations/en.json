@@ -70,6 +70,27 @@
             "reauth_successful": "New charger configured"
         }
     },
+    "options": {
+        "step": {
+            "init": {
+                "title": "OCPP Central System Settings",
+                "description": "If you need help with the configuration have a look [here]({docs_url})",
+                "data": {
+                    "host": "Central system host address",
+                    "port": "Central system port number",
+                    "ssl": "Secure connection",
+                    "ssl_certfile_path": "Path to SSL certificate or (None)",
+                    "ssl_keyfile_path": "Path to SSL key or (None)",
+                    "csid": "Central system identity",
+                    "enable_reboot_notifications": "Enable charger reboot notifications",
+                    "websocket_close_timeout": "Websocket close timeout (seconds)",
+                    "websocket_ping_tries": "Websocket successive times to try connection before closing",
+                    "websocket_ping_interval": "Websocket ping interval (seconds)",
+                    "websocket_ping_timeout": "Websocket ping timeout (seconds)"
+                }
+            }
+        }
+    },
     "exceptions": {
         "invalid_ocpp_key": {
             "message": "Invalid OCPP key"

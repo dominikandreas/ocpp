@@ -6,6 +6,7 @@ from homeassistant.config_entries import (
     ConfigFlow,
     ConfigFlowResult,
     CONN_CLASS_LOCAL_PUSH,
+    OptionsFlow,
 )
 from homeassistant.helpers import config_validation as cv
 import voluptuous as vol
@@ -57,33 +58,6 @@ from .const import (
     MEASURANDS,
 )
 
-STEP_USER_CS_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_HOST, default=DEFAULT_HOST): str,
-        vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
-        vol.Required(CONF_SSL, default=DEFAULT_SSL): bool,
-        vol.Required(CONF_SSL_CERTFILE_PATH, default=DEFAULT_SSL_CERTFILE_PATH): str,
-        vol.Required(CONF_SSL_KEYFILE_PATH, default=DEFAULT_SSL_KEYFILE_PATH): str,
-        vol.Required(CONF_CSID, default=DEFAULT_CSID): vol.All(str, vol.Length(max=20)),
-        vol.Required(
-            CONF_ENABLE_REBOOT_NOTIFICATIONS,
-            default=DEFAULT_ENABLE_REBOOT_NOTIFICATIONS,
-        ): bool,
-        vol.Required(
-            CONF_WEBSOCKET_CLOSE_TIMEOUT, default=DEFAULT_WEBSOCKET_CLOSE_TIMEOUT
-        ): int,
-        vol.Required(
-            CONF_WEBSOCKET_PING_TRIES, default=DEFAULT_WEBSOCKET_PING_TRIES
-        ): int,
-        vol.Required(
-            CONF_WEBSOCKET_PING_INTERVAL, default=DEFAULT_WEBSOCKET_PING_INTERVAL
-        ): int,
-        vol.Required(
-            CONF_WEBSOCKET_PING_TIMEOUT, default=DEFAULT_WEBSOCKET_PING_TIMEOUT
-        ): int,
-    }
-)
-
 STEP_USER_CP_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_CPID, default=DEFAULT_CPID): str,
@@ -111,12 +85,84 @@ STEP_USER_MEASURANDS_SCHEMA = vol.Schema(
 )
 
 
+def _get_cs_data_schema(config: dict[str, Any] | None = None) -> vol.Schema:
+    """Build the central system schema with config-backed defaults."""
+
+    config = config or {}
+
+    return vol.Schema(
+        {
+            vol.Required(CONF_HOST, default=config.get(CONF_HOST, DEFAULT_HOST)): str,
+            vol.Required(CONF_PORT, default=config.get(CONF_PORT, DEFAULT_PORT)): int,
+            vol.Required(CONF_SSL, default=config.get(CONF_SSL, DEFAULT_SSL)): bool,
+            vol.Required(
+                CONF_SSL_CERTFILE_PATH,
+                default=config.get(
+                    CONF_SSL_CERTFILE_PATH,
+                    DEFAULT_SSL_CERTFILE_PATH,
+                ),
+            ): str,
+            vol.Required(
+                CONF_SSL_KEYFILE_PATH,
+                default=config.get(
+                    CONF_SSL_KEYFILE_PATH,
+                    DEFAULT_SSL_KEYFILE_PATH,
+                ),
+            ): str,
+            vol.Required(
+                CONF_CSID,
+                default=config.get(CONF_CSID, DEFAULT_CSID),
+            ): vol.All(str, vol.Length(max=20)),
+            vol.Required(
+                CONF_ENABLE_REBOOT_NOTIFICATIONS,
+                default=config.get(
+                    CONF_ENABLE_REBOOT_NOTIFICATIONS,
+                    DEFAULT_ENABLE_REBOOT_NOTIFICATIONS,
+                ),
+            ): bool,
+            vol.Required(
+                CONF_WEBSOCKET_CLOSE_TIMEOUT,
+                default=config.get(
+                    CONF_WEBSOCKET_CLOSE_TIMEOUT,
+                    DEFAULT_WEBSOCKET_CLOSE_TIMEOUT,
+                ),
+            ): int,
+            vol.Required(
+                CONF_WEBSOCKET_PING_TRIES,
+                default=config.get(
+                    CONF_WEBSOCKET_PING_TRIES,
+                    DEFAULT_WEBSOCKET_PING_TRIES,
+                ),
+            ): int,
+            vol.Required(
+                CONF_WEBSOCKET_PING_INTERVAL,
+                default=config.get(
+                    CONF_WEBSOCKET_PING_INTERVAL,
+                    DEFAULT_WEBSOCKET_PING_INTERVAL,
+                ),
+            ): int,
+            vol.Required(
+                CONF_WEBSOCKET_PING_TIMEOUT,
+                default=config.get(
+                    CONF_WEBSOCKET_PING_TIMEOUT,
+                    DEFAULT_WEBSOCKET_PING_TIMEOUT,
+                ),
+            ): int,
+        }
+    )
+
+
 class ConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for OCPP."""
 
     VERSION = 2
     MINOR_VERSION = 1
     CONNECTION_CLASS = CONN_CLASS_LOCAL_PUSH
+
+    @staticmethod
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Return the options flow for this config entry."""
+        return OcppOptionsFlowHandler(config_entry)
 
     def __init__(self):
         """Initialize."""
@@ -140,7 +186,32 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=STEP_USER_CS_DATA_SCHEMA,
+            data_schema=_get_cs_data_schema(),
+            errors=errors,
+            description_placeholders={"docs_url": "https://github.com/lbbrhzn/ocpp"},
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle reconfiguration from the integrations page."""
+
+        errors: dict[str, str] = {}
+        entry = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            if user_input[CONF_PORT] != entry.data[CONF_PORT]:
+                self._async_abort_entries_match({CONF_PORT: user_input[CONF_PORT]})
+
+            return self.async_update_reload_and_abort(
+                entry,
+                title=user_input[CONF_CSID],
+                data_updates=user_input,
+            )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=_get_cs_data_schema(entry.data),
             errors=errors,
             description_placeholders={"docs_url": "https://github.com/lbbrhzn/ocpp"},
         )
@@ -236,4 +307,38 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="measurands",
             data_schema=STEP_USER_MEASURANDS_SCHEMA,
             errors=errors,
+        )
+
+
+class OcppOptionsFlowHandler(OptionsFlow):
+    """Handle OCPP options shown from the integration page gear button."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialize options flow."""
+        self._config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage the OCPP integration settings."""
+
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            if user_input[CONF_PORT] != self._config_entry.data[CONF_PORT]:
+                self._async_abort_entries_match({CONF_PORT: user_input[CONF_PORT]})
+
+            self.hass.config_entries.async_update_entry(
+                self._config_entry,
+                title=user_input[CONF_CSID],
+                data={**self._config_entry.data, **user_input},
+            )
+            self.hass.config_entries.async_schedule_reload(self._config_entry.entry_id)
+            return self.async_create_entry(title="", data=self._config_entry.options)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_get_cs_data_schema(self._config_entry.data),
+            errors=errors,
+            description_placeholders={"docs_url": "https://github.com/lbbrhzn/ocpp"},
         )
